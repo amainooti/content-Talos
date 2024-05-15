@@ -1,43 +1,59 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from pydantic import BaseModel
+from typing import List
+import cv2
+import pytesseract
 
 app = FastAPI()
 
-class VideoSegment(BaseModel):
-    start_time: float
-    end_time: float
-    segment_url: str
+# Path to Tesseract executable (you need to install Tesseract OCR)
+pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
-ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'avi', 'mkv', 'mov'}
+# Function to process each frame of the uploaded video and detect text
+def detect_text_from_video(video_path: str) -> List[str]:
+    # Open the video file
+    video_capture = cv2.VideoCapture(video_path)
 
-def is_valid_video_extension(filename: str) -> bool:
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_VIDEO_EXTENSIONS
+    # List to store detected text from each frame
+    detected_text = []
 
-@app.post("/upload/{video_id}")
-async def upload_video(video_id: str, video_file: UploadFile = File(...)):
-    # Check if the file extension is allowed
-    if not is_valid_video_extension(video_file.filename):
-        raise HTTPException(status_code=400, detail="Invalid video format. Supported formats: mp4, avi, mkv, mov")
+    while True:
+        # Read frame from the video
+        ret, frame = video_capture.read()
+        if not ret:
+            break
 
-    # Process the uploaded video file
-    # You can save the file, perform additional checks, etc.
-    return {"video_id": video_id, "filename": video_file.filename, "status": "successfully parsed video"}
+        # Convert frame to grayscale
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-@app.post("/recognize_objects/{video_id}")
-def recognize_objects(video_id: str):
-    # Perform object recognition on the video and return detected objects
-    ...
+        # Apply thresholding or other preprocessing techniques if needed
 
-@app.post("/recognize_audio/{video_id}")
-def recognize_audio(video_id: str):
-    # Perform audio recognition on the video and return recognized speech or audio features
-    ...
+        # Use pytesseract to detect text
+        text = pytesseract.image_to_string(gray)
 
-@app.post("/segment_video/{video_id}")
-def segment_video(video_id: str, segment_duration: float):
-    # Segment the video into set time intervals and return the segments
-    ...
+        # Add detected text to the list
+        detected_text.append(text)
+
+    # Release the video capture object
+    video_capture.release()
+
+    return detected_text
+
+@app.post("/detect_text_from_video/")
+async def detect_text_from_uploaded_video(video_file: UploadFile = File(...)):
+    # Save the uploaded video to a temporary file
+    with open("temp_video.mp4", "wb") as video:
+        video.write(video_file.file.read())
+
+    # Detect text from the uploaded video
+    detected_text = detect_text_from_video("temp_video.mp4")
+
+    # Delete the temporary video file
+    # You may want to handle temporary file cleanup differently based on your application requirements
+    import os
+    os.remove("temp_video.mp4")
+
+    return {"detected_text": detected_text}
 
 @app.get("/")
 def home():
-    return {"message": "Welcome to the Video Processing API!"}
+    return {"message": "Welcome to the Video Text Detection API!"}
