@@ -2,6 +2,8 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from typing import List
 import cv2
 import pytesseract
+import os
+from tempfile import NamedTemporaryFile
 
 app = FastAPI()
 
@@ -9,12 +11,14 @@ app = FastAPI()
 pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
 # Function to process each frame of the uploaded video and detect text
-def detect_text_from_video(video_path: str) -> List[str]:
+def detect_text_from_video(video_path: str, frame_skip: int = 30) -> List[str]:
     # Open the video file
     video_capture = cv2.VideoCapture(video_path)
 
     # List to store detected text from each frame
     detected_text = []
+
+    frame_count = 0
 
     while True:
         # Read frame from the video
@@ -22,8 +26,17 @@ def detect_text_from_video(video_path: str) -> List[str]:
         if not ret:
             break
 
+        frame_count += 1
+
+        # Process every Nth frame to speed up processing
+        if frame_count % frame_skip != 0:
+            continue
+
         # Convert frame to grayscale
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Resize frame to reduce processing time
+        gray = cv2.resize(gray, (gray.shape[1] // 2, gray.shape[0] // 2))
 
         # Apply thresholding or other preprocessing techniques if needed
 
@@ -41,16 +54,18 @@ def detect_text_from_video(video_path: str) -> List[str]:
 @app.post("/detect_text_from_video/")
 async def detect_text_from_uploaded_video(video_file: UploadFile = File(...)):
     # Save the uploaded video to a temporary file
-    with open("temp_video.mp4", "wb") as video:
-        video.write(video_file.file.read())
+    with NamedTemporaryFile(delete=False, suffix=".mp4") as temp_video:
+        temp_video.write(video_file.file.read())
+        temp_video_path = temp_video.name
 
-    # Detect text from the uploaded video
-    detected_text = detect_text_from_video("temp_video.mp4")
+    try:
+        # Detect text from the uploaded video
+        detected_text = detect_text_from_video(temp_video_path)
 
-    # Delete the temporary video file
-    # You may want to handle temporary file cleanup differently based on your application requirements
-    import os
-    os.remove("temp_video.mp4")
+    finally:
+        # Delete the temporary video file
+        if os.path.exists(temp_video_path):
+            os.remove(temp_video_path)
 
     return {"detected_text": detected_text}
 
