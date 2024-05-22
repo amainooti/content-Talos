@@ -4,11 +4,14 @@ import cv2
 import pytesseract
 import os
 from tempfile import NamedTemporaryFile
-
 app = FastAPI()
 
 # Path to Tesseract executable (you need to install Tesseract OCR)
 pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+
+# stores OCR text in array
+response = []
+
 
 # Function to process each frame of the uploaded video and detect text
 def detect_text_from_video(video_path: str, frame_skip: int = 30) -> List[str]:
@@ -67,7 +70,17 @@ async def detect_text_from_uploaded_video(video_file: UploadFile = File(...)):
         if os.path.exists(temp_video_path):
             os.remove(temp_video_path)
 
+    response.append(detected_text)
+
     return {"detected_text": detected_text}
+
+
+# @param: List { openAI operations carried out on extracted text data }
+def analyse_response(response: List):
+    print(response)
+
+
+analyse_response(response)
 
 @app.get("/")
 def home():
